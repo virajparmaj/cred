@@ -1,0 +1,11 @@
+Tool: built-in imagegen, transparent_background=true
+Edit target: user-supplied /Users/veerr_89/Downloads/cred-menu.png
+
+Final refinement prompt:
+Use case: background-extraction. Edit the original attached black logo image. The result MUST be a square transparent PNG alpha mask. Carefully remove the printed gray/white checkerboard from every place it appears. Preserve the original emblem exactly, do not redraw or change the shapes. All foreground RGB values MUST be (0,0,0), pure #000000 black; opacity ONLY in the alpha channel. Use flat opaque solid black inside the logo; zero alpha outside it and in every internal cutout. Place complete logo centered, using 76% of canvas width and height, leaving 12% even blank transparent margin on all four sides. The logo is a circular interlinked black silhouette: sunburst upper left, spiral upper right, isometric cube lower left, four-point sparkle lower right, organic ring between them, transparent open middle. Do not add smoky black background, shadows, texture, faint dark haze, gray pixels or noise. Only perfectly flat solid black logo with crisp edges and empty true-transparent background, no checkerboard, no white rectangle, no gradient, no text.
+
+Export: native CoreGraphics normalization to RGB #000000, preserving alpha edges,
+discarding near-invisible alpha below 8/255, and centering to a 780px footprint on
+a 1024px transparent canvas. Final file: CRED-menu-silhouette.png.
+
+undefined

@@ -1,0 +1,7 @@
+Tool: built-in imagegen, transparent_background=true
+Edit target: CRED-source.png (user-supplied CRED.png)
+
+Use case: background-extraction. Asset type: macOS application icon master, square 1024x1024. Input image 1 is the edit target. Remove ONLY the white background outside the charcoal rounded-square app tile, replacing it with true alpha transparency. Preserve the entire original metallic artwork exactly: gold sun, copper hand/flame, silver teal spiral, silver geometric cube, purple blue ribbon and star; preserve all colors, shapes, layout, lighting, and the charcoal rounded tile. Center the existing tile, scale proportionally to a macOS icon footprint of approximately 824x824 on the 1024 square canvas with about 100 pixels transparent padding on each side. Keep the original subtly rounded corners and crisp edge. No white matte, no white border, no new objects, no text, no redesign. Keep shadow subtle and within the transparent canvas.
+
+The generated PNG was resized to a 1024x1024 master with macOS sips.
+Native icon sizes are generated from that master by build_icon.sh.
