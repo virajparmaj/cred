@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "credusage"
+version = "0.1.0"
+description = "Passive, local macOS menu bar monitor for AI usage allowances"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "rumps>=0.4.0,<0.5; sys_platform == 'darwin'",
+  "pyobjc-framework-Cocoa>=10,<13; sys_platform == 'darwin'",
+  "pyobjc-framework-ServiceManagement>=10,<13; sys_platform == 'darwin'",
+]
+
+[project.scripts]
+credusage = "credusage.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["credusage*"]
+
+[tool.setuptools.package-data]
+credusage = ["assets/*.png", "assets/*.icns", "assets/*.svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["credusage"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '/(\.venv|\.cache|build|dist|\.qa)/'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+py_version = 311
+skip_gitignore = true
+known_first_party = ["credusage"]
