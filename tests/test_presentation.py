@@ -62,8 +62,8 @@ def test_missing_usage_is_unknown_not_zero():
     assert "0%" not in str(empty)
 
 
-def test_fractions_are_not_guessed():
-    assert usage_label(observation(used_percent=Decimal("0.5"))) == "0.5% used"
+def test_percent_display_rounds_without_rescaling():
+    assert usage_label(observation(used_percent=Decimal("0.5"))) == "1% used"
     assert usage_label(observation(used_percent=Decimal("105"))) == "105% used"
 
 
@@ -72,7 +72,7 @@ def test_health_and_freshness_remain_separate_and_textual():
     menu = build_menu((state(stale),), (DESCRIPTOR,), NOW)
     assert "Connected" in menu.connections[0].title
     assert "stale" in menu.connections[0].buckets[0].title
-    assert "32.5% used" in menu.connections[0].buckets[0].title
+    assert "33% used" in menu.connections[0].buckets[0].title
     failed = build_menu(
         (state(stale, health=ConnectionHealth.TRANSPORT_FAILURE),), (DESCRIPTOR,), NOW
     )
@@ -83,14 +83,14 @@ def test_health_and_freshness_remain_separate_and_textual():
 def test_expired_reading_remains_historical_without_refill():
     expired = observation(window=QuotaWindow(resets_at=NOW))
     shown = present_bucket(expired, NOW)
-    assert "32.5% used" in shown.title
+    assert "33% used" in shown.title
     assert "expired historical reading" in shown.title
     assert any("Expected reset passed; verification needed" in text for text in shown.details)
 
 
 def test_pin_reflects_usage_and_freshness():
     menu = build_menu((state(observation()),), (DESCRIPTOR,), NOW, "one", "five")
-    assert menu.title == "Codex: 32.5% used · 2h 0m"
+    assert menu.title == "Codex: 33% used · 2h 0m"
     assert menu.connections[0].buckets[0].pinned
     stale = build_menu((state(observation(fresh_until=NOW)),), (DESCRIPTOR,), NOW, "one", "five")
     assert stale.title.endswith("stale")

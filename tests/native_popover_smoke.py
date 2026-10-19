@@ -43,7 +43,7 @@ states = []
 for index, (integration, name, _) in enumerate(PROVIDERS):
     connection = Connection(f"qa-{index}", integration, label="Synthetic visual QA")
     observations = ()
-    if integration in ("openai.codex", "anthropic.claude"):
+    if integration in ("openai.codex", "anthropic.claude", "google.antigravity"):
         observations = tuple(
             QuotaObservation(
                 connection.connection_id,
@@ -51,7 +51,11 @@ for index, (integration, name, _) in enumerate(PROVIDERS):
                 (
                     f"codex:standard:{'primary' if key == 'five' else 'secondary'}"
                     if integration == "openai.codex"
-                    else key
+                    else (
+                        f"antigravity:Gemini%20Models:{key}"
+                        if integration == "google.antigravity"
+                        else key
+                    )
                 ),
                 label,
                 source,
@@ -63,9 +67,32 @@ for index, (integration, name, _) in enumerate(PROVIDERS):
                 fresh_until=now + timedelta(minutes=10),
             )
             for key, label, value, seconds, hours in (
-                ("five", "5-hour allowance", "62.5" if index == 2 else "58", 18000, 2),
-                ("weekly", "Weekly allowance", "29" if index == 2 else "10", 604800, 72),
+                (
+                    "five",
+                    "5-hour allowance",
+                    "6.84143304824829" if index == 0 else "62.5" if index == 2 else "58",
+                    18000,
+                    2,
+                ),
+                (
+                    "weekly",
+                    "Weekly allowance",
+                    "2.66898274421692" if index == 0 else "29" if index == 2 else "10",
+                    604800,
+                    72,
+                ),
             )
+        )
+    if integration == "google.antigravity":
+        observations += tuple(
+            replace(
+                item,
+                bucket_key=item.bucket_key.replace(
+                    "Gemini%20Models", "Claude%20and%20GPT%20models"
+                ),
+                used_percent=Decimal("20"),
+            )
+            for item in observations
         )
     if integration == "openai.codex":
         observations += (
@@ -190,8 +217,8 @@ controller = FakeController()
 shell = NativeShell(controller)
 shell.usage.popover.setAnimates_(False)
 checks = {}
-qa = Path(".qa/compact-popover")
-qa.mkdir(exist_ok=True)
+qa = Path(".qa/narrow-popover")
+qa.mkdir(parents=True, exist_ok=True)
 
 
 def capture(view, name):
@@ -211,9 +238,17 @@ def assert_no_scroll_and_fit(view):
 
     no_scroll(view)
     bounds = view.bounds()
-    assert (bounds.size.width, bounds.size.height) == (200, 260)
-    assert tuple(shell.usage.popover.contentSize()) == (250, 325)
-    assert tuple(view.frame().size) == (250, 325)
+    ui = shell.usage
+    if ui.provider_id:
+        rows = int(len(ui.current_provider().contexts) > 1) + int(len(ui.current_groups()) > 1)
+        expected_height = 392 + 32 * rows + (32 if ui.action_message else 0)
+    else:
+        expected_height = 320 + (
+            24 if any(p.integration_id == "example.demo" for p in ui.dashboard.providers) else 0
+        )
+    assert (bounds.size.width, bounds.size.height) == (256, expected_height)
+    assert tuple(ui.popover.contentSize()) == (256, expected_height)
+    assert tuple(view.frame().size) == (256, expected_height)
     material = next(v for v in view.subviews() if isinstance(v, A.NSVisualEffectView))
     assert material.material() == A.NSVisualEffectMaterialPopover
     assert material.blendingMode() == A.NSVisualEffectBlendingModeWithinWindow
@@ -222,10 +257,28 @@ def assert_no_scroll_and_fit(view):
     )
     assert abs(neutral.redComponent() - neutral.greenComponent()) < 0.01
     assert abs(neutral.greenComponent() - neutral.blueComponent()) < 0.01
-    buttons = {v.title(): v for v in view.subviews() if isinstance(v, A.NSButton)}
-    assert tuple(buttons["Settings…"].frame().origin) == (8, 239)
-    assert tuple(buttons["Quit"].frame().origin) == (153, 239)
-    assert tuple(buttons["Quit"].frame().size) == (39, 18)
+    assert (neutral.redComponent() > 0.5) == ui.is_dark()
+    buttons = {v.accessibilityLabel(): v for v in view.subviews() if isinstance(v, A.NSButton)}
+    for name, x in (("Settings", 12), ("Quit", 212)):
+        button = buttons[name]
+        assert button.title() == "" and button.image() is not None
+        assert button.toolTip() == name
+        assert tuple(button.frame().origin) == (x, expected_height - 36)
+        assert tuple(button.frame().size) == (32, 32)
+    logos = [v for v in view.subviews() if isinstance(v, A.NSImageView)]
+    if ui.provider_id:
+        assert len(logos) == 1 and tuple(logos[0].frame().size) == (56, 56)
+    assert not any(isinstance(v, A.NSBox) and v.frame().size.height > 1 for v in view.subviews())
+    for row in (v for v in view.subviews() if isinstance(v, ui.Row)):
+        progress = [v for v in row.subviews() if isinstance(v, ui.Progress)]
+        images = [v for v in row.subviews() if isinstance(v, A.NSImageView)]
+        assert len(images) == 1 and tuple(images[0].frame().size) == (44, 44)
+        numeric = "%" in row.accessibilityLabel().split(",")[1]
+        assert len(progress) == int(numeric)
+        for bar in progress:
+            assert bar.frame().size.height == 4
+            assert bar.frame().origin.x + row.frame().origin.x == 68
+            assert bar.frame().origin.x + row.frame().origin.x + bar.frame().size.width == 240
     for child in view.subviews():
         frame = child.frame()
         assert frame.origin.x >= -1 and frame.origin.y >= -1
@@ -264,13 +317,16 @@ def inspect(timer):
             assert_no_scroll_and_fit(shell.usage.controller.view())
             rows = [v for v in shell.usage.focusables if isinstance(v, shell.usage.Row)]
             assert len(rows) == 4
-            assert all(tuple(row.frame().size) == (188, 43) for row in rows)
+            assert all(tuple(row.frame().size) == (240, 56) for row in rows)
+            shell.usage.controller.view().window().makeFirstResponder_(None)
+            rows[1].hovered = True
+            rows[1].setNeedsDisplay_(True)
             capture(shell.usage.controller.view(), f"overview-{theme}.png")
             shell.usage.group_keys.pop("qa-1", None)
             # Second provider row is Codex, triggered through target/action.
             shell.usage.focusables[1].performClick_(None)
             assert shell.usage.provider_id == "openai.codex"
-            capture(shell.usage.controller.view(), f"details-{theme}.png")
+            capture(shell.usage.controller.view(), f"details-selectors-{theme}.png")
             assert_no_scroll_and_fit(shell.usage.controller.view())
             credit = next(
                 v
@@ -314,6 +370,34 @@ def inspect(timer):
             )
             shell.usage.focusables[0].performClick_(None)
             assert shell.usage.provider_id is None
+            # Capture the standard 392 pt composition as well as the extended selector case.
+            original = shell.usage.dashboard
+            codex = original.providers[1]
+            standard = replace(
+                next(c for c in codex.contexts if c.connection_id == "qa-1"),
+                label="Local context",
+                limits=tuple(
+                    item
+                    for item in next(c for c in codex.contexts if c.connection_id == "qa-1").limits
+                    if item.key.startswith("codex:standard:")
+                ),
+            )
+            single = replace(codex, contexts=(standard,), selected_id=standard.connection_id)
+            shell.usage.update(
+                replace(
+                    original,
+                    providers=tuple(
+                        single if p.integration_id == codex.integration_id else p
+                        for p in original.providers
+                    ),
+                )
+            )
+            shell.usage.detail("openai.codex")
+            assert_no_scroll_and_fit(shell.usage.controller.view())
+            assert shell.usage.geometry.height == 392
+            capture(shell.usage.controller.view(), f"details-{theme}.png")
+            shell.usage.update(original)
+            shell.usage.overview()
         checks["native_light_dark_material_and_row_back_context_selection"] = True
         shell.usage.popover.setAppearance_(None)
         for integration, name, _ in PROVIDERS:
@@ -322,6 +406,25 @@ def inspect(timer):
             capture(shell.usage.controller.view(), name.replace(" ", "-").lower() + "-dark.png")
             if integration == "anthropic.claude":
                 assert shell.usage.current_group().short.freshness.value == "undated"
+            if integration == "google.antigravity":
+                assert [group.label for group in shell.usage.current_groups()] == [
+                    "Gemini Models",
+                    "Claude and GPT models",
+                ]
+                picker = next(
+                    v
+                    for v in shell.usage.controller.view().subviews()
+                    if isinstance(v, A.NSPopUpButton) and v.accessibilityLabel() == "Quota pool"
+                )
+                picker.selectItemAtIndex_(1)
+                shell.usage.pool_changed(picker)
+                assert shell.usage.current_group().short.percent_used == 20
+                assert shell.usage.current_group().long.percent_used == 20
+                controller.clock = SimpleNamespace(now=lambda: now + timedelta(seconds=1))
+                shell.tick()
+                assert shell.usage.current_group().label == "Claude and GPT models"
+                assert_no_scroll_and_fit(shell.usage.controller.view())
+                checks["antigravity_model_groups_and_selection_after_refresh"] = True
             metrics = [
                 v
                 for v in shell.usage.controller.view().subviews()
@@ -355,15 +458,10 @@ def inspect(timer):
         shell.tick()
         assert shell.usage.current_group().key == "codex:spark"
         checks["pool_selection_preserved_after_update"] = True
-        original_size = shell.usage.available_size
-        shell.usage.available_size = lambda: (400, 420)
-        shell.usage.render(force=True)
-        assert_no_scroll_and_fit(shell.usage.controller.view())
-        assert shell.usage.geometry.compact and shell.usage.geometry.height == 260
-        capture(shell.usage.controller.view(), "details-compact.png")
-        shell.usage.available_size = original_size
-        shell.usage.render(force=True)
-        checks["fixed_geometry_independent_of_screen_and_navigation"] = True
+        assert shell.usage.geometry.width == 256
+        assert shell.usage.geometry.height == 456
+        capture(shell.usage.controller.view(), "details-selectors.png")
+        checks["point_geometry_and_content_driven_height"] = True
         stale_picker = next(
             v
             for v in shell.usage.controller.view().subviews()
@@ -417,6 +515,19 @@ def inspect(timer):
         )
         refresh.performClick_(None)
         assert controller.requests[-1] == ("qa-1", "manual")
+        assert_no_scroll_and_fit(shell.usage.controller.view())
+        assert shell.usage.geometry.height == 488
+        source_label = next(
+            v
+            for v in shell.usage.controller.view().subviews()
+            if isinstance(v, A.NSTextField) and v.stringValue().startswith("Source:")
+        )
+        assert "Unverified reading" in source_label.stringValue()
+        assert any(
+            isinstance(v, A.NSTextField) and v.stringValue() == shell.usage.action_message
+            for v in shell.usage.controller.view().subviews()
+        )
+        capture(shell.usage.controller.view(), "details-feedback.png")
         shell.usage.open_dashboard()
         assert controller.opened == []  # Demo guard, no external page.
         controller.config.demo = False
@@ -430,6 +541,69 @@ def inspect(timer):
         assert controller.opened == [("qa-1", "dashboard")]
         controller.config.demo = True
         checks["quick_actions_selected_context_and_demo_guard"] = True
+        original = shell.usage.dashboard
+        codex = original.providers[1]
+        base = next(c for c in codex.contexts if c.connection_id == "qa-1")
+        primary = next(item for item in base.limits if item.key == "codex:standard:primary")
+        for state, percent, freshness in (
+            ("zero", Decimal(0), "fresh"),
+            ("unknown", None, "fresh"),
+            ("stale", Decimal(25), "stale"),
+            ("expired", Decimal(25), "expired"),
+            ("undated", Decimal(25), "undated"),
+        ):
+            from credusage.domain.models import Freshness
+
+            reading = replace(
+                primary,
+                percent_used=percent,
+                freshness=Freshness(freshness),
+                usage="Usage unavailable" if percent is None else f"{percent}% used",
+            )
+            selected = replace(base, limits=(reading,), primary_key=reading.key)
+            changed = replace(codex, contexts=(selected,), selected_id=selected.connection_id)
+            shell.usage.update(
+                replace(
+                    original,
+                    providers=tuple(
+                        changed if p.integration_id == codex.integration_id else p
+                        for p in original.providers
+                    ),
+                )
+            )
+            shell.usage.detail("openai.codex")
+            assert_no_scroll_and_fit(shell.usage.controller.view())
+            bars = [
+                v
+                for v in shell.usage.controller.view().subviews()
+                if isinstance(v, shell.usage.Progress)
+            ]
+            assert len(bars) == int(percent is not None)
+            if bars:
+                assert bars[0].historical == (freshness != "fresh")
+                assert bars[0].fraction == float(percent / 100)
+            if freshness != "fresh":
+                assert any(
+                    isinstance(v, A.NSTextField) and v.stringValue() == freshness.capitalize()
+                    for v in shell.usage.controller.view().subviews()
+                )
+            assert any(
+                isinstance(v, A.NSTextField) and v.stringValue() == "Not reported"
+                for v in shell.usage.controller.view().subviews()
+            )
+            capture(shell.usage.controller.view(), f"details-{state}-missing-weekly.png")
+            shell.usage.overview()
+            assert_no_scroll_and_fit(shell.usage.controller.view())
+        shell.usage.update(original)
+        shell.usage.overview()
+        controller.clock = SimpleNamespace(now=lambda: now + timedelta(minutes=3))
+        shell.usage.render()
+        assert any(
+            isinstance(v, A.NSTextField) and v.stringValue() == "Demo · 3 min ago"
+            for v in shell.usage.controller.view().subviews()
+        )
+        checks["overview_age_refreshes_without_new_source_data"] = True
+        checks["zero_unknown_missing_window_and_historical_readings"] = True
         # Send native key events through NSWindow, exercising the actual responder chain.
         shell.usage.overview()
         window = shell.usage.controller.view().window()
@@ -452,6 +626,9 @@ def inspect(timer):
 
         key(48, "\t")
         assert window.firstResponder() == shell.usage.focusables[1]
+        assert shell.usage.keyboard_navigation
+        shell.usage.focusables[1].mouseEntered_(None)
+        assert not shell.usage.keyboard_navigation
         key(36, "\r")
         assert shell.usage.provider_id == "openai.codex"
         key(53, "\x1b")
@@ -494,6 +671,8 @@ def inspect(timer):
         shell.usage.close()
         settings = show_settings(real)
         assert settings.window.isVisible() and settings.pin_picker.numberOfItems() > 0
+        assert abs(settings.window.contentView().frame().size.width - 746 * 0.8) < 1
+        assert abs(settings.document.frame().size.width - 722 * 0.8) < 0.01
         settings._save()
         assert settings.status.stringValue().startswith("Saved.")
         assert real.config.pinned_bucket_key == "not-yet-reported"

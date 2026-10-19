@@ -21,13 +21,11 @@ from credusage.domain.models import (
     Unit,
     UsageSnapshot,
 )
-from credusage.ui.compact_details import credit_label, dashboard_action, duration_name
+from credusage.ui.compact_details import credit_label, dashboard_action, duration_name, window_title
 from credusage.ui.dashboard import present_context, present_limit
 from credusage.ui.detail_layout import (
-    CANVAS_HEIGHT,
-    CANVAS_WIDTH,
-    CONTENT_SCALE,
-    WINDOW_HEIGHT,
+    DETAIL_HEIGHT,
+    OVERVIEW_HEIGHT,
     WINDOW_WIDTH,
     detail_geometry,
     group_freshness,
@@ -172,20 +170,57 @@ def test_refresh_dates_are_structured_without_parsing_strings():
     assert c.limits[0].fetched_at == NOW
 
 
-def test_fixed_layout_keeps_the_same_canvas_and_composition_on_every_display():
-    assert (WINDOW_WIDTH, WINDOW_HEIGHT) == (250, 325)
-    assert WINDOW_WIDTH / CANVAS_WIDTH == WINDOW_HEIGHT / CANVAS_HEIGHT == CONTENT_SCALE == 1.25
-    for width, height in ((1512, 900), (400, 420), (360, 400), (1024, 600)):
-        g = detail_geometry(width, height)
-        assert (g.width, g.height, g.compact) == (200, 260, True)
-        assert g.height / g.width == 1.3
-        assert (g.cards_y, g.stats_y, g.source_y, g.actions_y, g.footer_y) == (
-            72,
-            168,
-            200,
-            214,
-            236,
+def test_layout_uses_points_and_allocates_room_for_selectors_and_feedback():
+    assert (WINDOW_WIDTH, OVERVIEW_HEIGHT, DETAIL_HEIGHT) == (256, 320, 392)
+    for rows in (0, 1, 2):
+        for feedback in (False, True):
+            g = detail_geometry(selector_rows=rows, feedback=feedback)
+            assert g.width == 256
+            assert g.height == 392 + rows * 32 + (32 if feedback else 0)
+            assert g.cards_y == 128 + rows * 32
+            assert g.cards_y + 104 <= g.stats_y - 8
+            assert g.stats_y + 36 <= g.source_y
+            assert g.source_y + 30 <= g.actions_y
+            assert g.actions_y + 24 <= g.feedback_y
+            assert g.footer_y + 40 == g.height
+            if feedback:
+                assert g.feedback_y + 32 == g.footer_y
+
+
+def test_window_titles_use_actual_reported_durations():
+    assert window_title(present_limit(limit("five"), NOW), "Short term") == "5-hour"
+    assert window_title(present_limit(limit("week", 604800), NOW), "Long term") == "Weekly"
+    assert window_title(present_limit(limit("three", 259200), NOW), "Long term") == "3d"
+    assert window_title(None, "Long term") == "Long term"
+
+
+def test_overview_update_uses_oldest_successful_visible_numeric_reading():
+    from credusage.ui.dashboard import DashboardView, ProviderView
+
+    fresh = context(limit("one"))
+    older = replace(fresh, last_success_at=NOW - timedelta(minutes=20))
+    unknown = context(limit("unknown", used_percent=None))
+    disabled = replace(fresh, enabled=False, last_success_at=NOW - timedelta(days=1))
+
+    def provider(name, c):
+        return ProviderView(name, name, "", (c,), c.connection_id)
+
+    ui = UsagePopover.__new__(UsagePopover)
+    ui.dashboard = DashboardView(
+        tuple(
+            provider(name, c)
+            for name, c in (
+                ("first", fresh),
+                ("second", older),
+                ("unknown", unknown),
+                ("disabled", disabled),
+                ("example.demo", replace(older, last_success_at=NOW - timedelta(days=2))),
+            )
         )
+    )
+    assert ui.overview_updated_at() == older.last_success_at
+    ui.dashboard = DashboardView((provider("unknown", unknown), provider("disabled", disabled)))
+    assert ui.overview_updated_at() is None
 
 
 def owner_for_actions(c, *, demo=False):
@@ -240,6 +275,15 @@ def test_quick_action_guards_and_failure_feedback():
     owner.shell.controller.run_action = fail
     owner.open_dashboard()
     assert "could not be opened" in owner.action_message
+    assert "sensitive" not in owner.action_message
+
+    def fail_refresh(cid, reason):
+        raise OSError("sensitive source path")
+
+    owner.current_context = lambda: c
+    owner.shell.controller.refresh = fail_refresh
+    owner.refresh_detail()
+    assert "could not be requested" in owner.action_message
     assert "sensitive" not in owner.action_message
 
 
