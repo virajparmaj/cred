@@ -6,13 +6,13 @@ CredUsage is an independent project. It does not change CredClaude, CredCodex, t
 
 ## Menu bar and usage details
 
-Click the monochrome CredUsage emblem to open a native popover for **Antigravity, Codex, Claude Code, and Cursor**. Rows use official provider artwork, percent used, the actual usage window, and a reset countdown. Five-hour windows are preferred when the source reports one. The menu bar stays icon-only. Overview and details share a fixed **250 × 325 pt** window with native macOS material, neutral progress bars and highlights, borderless action buttons, and standard pickers. All content scales proportionally by 125% from the compact layout while preserving the 10:13 ratio. The popover follows the system appearance.
+Click the monochrome CredUsage emblem to open a native popover for **Antigravity, Codex, Claude Code, and Cursor**. Rows use official provider artwork, percent used, the actual usage window, and a reset countdown. Five-hour windows are preferred when the source reports one. The menu bar stays icon-only. The overview is **256 × 320 pt** and provider details start at **256 × 392 pt**, using direct point sizes, native macOS material, and automatic light/dark appearance. Four evenly spaced rows use 44 pt icons, restrained system typography, thin neutral progress bars, subtle hover highlights, and a neutral keyboard-focus cue. Unknown usage has no progress track. Settings and Quit use icon-only controls with accessible names and tooltips. The header update age represents the oldest successful update among the displayed numerical readings.
 
-Click a provider for a compact detail panel with **no scrolling**. Codex and Claude show compact short-term and long-term tiles with percent used, reported window duration, reset countdowns, and calculated percentage left. Exact local reset times and source facts are available in tooltips and accessibility descriptions. Context and quota-pool selectors keep every reported pool separate; credits appear only for their associated pool. The status strip shows refresh time, freshness, and account verification or reported credit balance.
+Click a provider for a compact detail panel with **no scrolling** and a 56 pt provider logo. Antigravity, Codex, and Claude show two unboxed usage columns with percent used, actual window duration, and reset countdowns. Reported five-hour and seven-day windows are labeled “5-hour” and “Weekly”. Exact local reset times and source facts are available in tooltips and accessibility descriptions. Context and quota-pool selectors keep every reported pool separate; each required selector adds a 32 pt row. Credits appear only for their associated pool. A plain metadata row shows refresh time, freshness, and account verification or reported credit balance, followed by the source and verification label. Action feedback adds a separate 32 pt row without replacing source information. A synthetic demo entry adds 24 pt to the overview when present.
 
-Cursor and Antigravity show provider-specific source readiness and numerical-source limitations, with no invented usage bars. Every detail panel offers **Refresh** and its existing usage/dashboard link; demo mode disables external links. Unknown usage has no fabricated percentage, and stale/expired/undated observations retain their labels until new source evidence arrives. Unsupported lifetime and token statistics are omitted.
+Cursor shows dashboard-only source readiness. Every detail panel offers **Refresh** and its existing usage/dashboard link; demo mode disables external links. Unknown usage has no fabricated percentage, and stale/expired/undated observations retain their labels until new source evidence arrives. Unsupported lifetime and token statistics are omitted.
 
-Use Tab or the arrow keys to move through rows, Return to open details, Left Arrow to go back, and Escape or an outside click to dismiss. **Settings** opens a separate window containing connection setup, source actions, refresh, preferred-context selection, notifications, startup, logs, diagnostics, and About. ChatGPT and Gemini remain configurable there; their allowances are separate from the coding products.
+Use Tab or the arrow keys to move through rows, Return to open details, Left Arrow to go back, and Escape or an outside click to dismiss. The **gear icon** opens a separate Settings window, also narrowed by 20%, containing connection setup, source actions, refresh, preferred-context selection, notifications, startup, logs, diagnostics, and About. ChatGPT and Gemini remain configurable there; their allowances are separate from the coding products.
 
 Native screenshots use **synthetic demonstration readings**, not live account data: [overview](docs/images/usage-popover-dark.png) and [provider details](docs/images/usage-details-dark.png). Light and dark appearances use native macOS styling.
 
@@ -48,12 +48,16 @@ Demo mode uses isolated app-owned data and disables real network and login actio
 | --- | --- | --- |
 | Codex | Documented app-server protocol; quota windows and push-triggered reads | Fixture-tested; passive smoke on Codex 0.159.2 returned three Plus buckets (original-display comparison pending). A quota `accountId` alone cannot prove the individual user. Unverified observations are labeled and cannot trigger quota alerts or reuse account-specific disk snapshots. |
 | Claude Code | Explicit passive status-line ingestion | Fixture-tested. Requires user-supplied telemetry; no Keychain or OAuth-token collection. Missing event timestamps remain undated. |
-| Antigravity | Installation/version discovery and setup actions | CLI 1.2.15+ required. Actual `/usage` JSON schema is not verified; numerical collection remains unavailable. |
+| Antigravity | Passive CLI `/usage` JSON; separate model groups, five-hour and weekly limits | CLI 1.2.15+ required; fixture-tested using real CLI 1.4.0 output. Account identity and original-display comparison remain unverified. |
 | Cursor | Installation discovery and dashboard action | Personal/free account source not verified; dashboard-only. |
 | ChatGPT consumer | Separate product and dashboard action | No verified passive numerical source. Codex allowances are not reused. |
 | Gemini consumer | Separate product and dashboard action | No verified passive numerical source. Antigravity allowances are not reused. |
 
 See [provider evidence and limitations](docs/PROVIDER_SUPPORT.md). Live verification is tracked independently from fixture tests in [verification](docs/VERIFICATION.md).
+
+### Antigravity setup
+
+Install the standalone `agy` CLI using [Google's installation instructions](https://antigravity.google/download), then run `agy` to sign in if needed. Check the passive source with `agy -p "/usage" --output-format json`. In CredUsage Settings, enable Antigravity and refresh. The app also checks `~/.local/bin/agy` when launched outside Terminal; an absolute CLI executable path can be set in Settings. Gemini and Claude/GPT model pools remain separate in the quota selector. Consumer Gemini allowances are separate from these Antigravity readings.
 
 ## Claude status-line ingestion
 

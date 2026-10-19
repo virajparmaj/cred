@@ -6,7 +6,7 @@ Evidence date: October 16, 2026. “Implemented” describes code paths. “Fixt
 | --- | --- | --- | --- |
 | `openai.codex` | Documented local app-server stdio protocol | Initialization, request routing, account checks, rate-limit reads, notifications, bounded shutdown; fixture-tested | A quota `accountId` is tenant evidence, not an individual subject. Active cache reuse and quota alerts remain disabled unless individual binding evidence is verified. Passive smoke on CLI 0.159.2 returned Plus plan and three buckets; same-account original-display comparison remains pending. |
 | `anthropic.claude` | Local passive status-line telemetry | Explicit bounded ingestion, version/session/usage filtering, documented window parsing; fixture-tested | User must supply callback telemetry. Missing event time stays undated. No credentials are collected; live callback comparison pending. |
-| `google.antigravity` | Documented standalone CLI discovery | `agy` version gate and setup/status actions; actual usage parser withheld | CLI 1.2.15+ and actual sanitized JSON required before a source-specific schema can be implemented and verified. |
+| `google.antigravity` | Documented passive standalone CLI `/usage` JSON | Version gate, structured quota parsing, separate model-group selection, five-hour/weekly windows and reset times; fixture-tested with real CLI 1.4.0 output | Account subject is absent; same-account original-display comparison remains pending. Identity-dependent disk caching and alerts stay gated. |
 | `cursor.editor` | Dashboard-only | Installation discovery and dashboard action | No verified passive personal/free-account quota source. Enterprise APIs do not establish free-account access. |
 | `openai.chatgpt` | Dashboard-only consumer integration | Separate registry entry and dashboard action | No verified passive numerical source. Codex observations are not consumer ChatGPT limits. |
 | `google.gemini_app` | Dashboard-only consumer integration | Separate registry entry and dashboard action | No verified passive numerical source. Antigravity observations are not consumer Gemini limits. |
@@ -22,7 +22,7 @@ The [status-line usage contract](https://code.claude.com/docs/en/statusline#rate
 
 ## Antigravity
 
-The [official changelog](https://antigravity.google/docs/changelog?tab=cli) establishes passive structured `/usage` output for the standalone CLI. Version 1.2.15 is the minimum gate. The app does not launch an older command or submit `/usage` to an interactive prompt. An unverified schema remains unavailable even when experimental opt-in is enabled.
+The [official changelog](https://antigravity.google/docs/changelog?tab=cli) establishes passive structured `/usage` output for the standalone CLI. Version 1.2.15 is the minimum gate. The app runs only `agy --version` and `agy -p "/usage" --output-format json`; it does not submit a model turn. The parser uses `command.data.groups[].buckets[]` from the user's actual CLI 1.4.0 output, retained as an allowlisted fixture in `tests/fixtures/antigravity-1.4.0-usage.json`. It converts `remaining_fraction` to percent used as `(1 - remaining_fraction) * 100`, preserves bucket IDs and reported resets, and keeps Gemini and Claude/GPT pools separate. Unknown windows have no inferred duration. The top-level token-usage object and human-readable response are not quota sources. Malformed, failed, and duplicate readings are rejected without exposing raw output. No account subject is present, so readings remain an unverified local context.
 
 ## Cursor and consumer products
 
