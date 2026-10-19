@@ -16,6 +16,7 @@ from credusage.domain.models import (
     QuotaState,
     ValidationStatus,
 )
+from credusage.formatting import percentage
 from credusage.infrastructure.storage import atomic_json, quarantine, read_json
 
 
@@ -120,7 +121,7 @@ class NotificationPolicy:
                     events.append(
                         Notification(
                             "Allowance running low",
-                            f"{connection.label}: {item.label} — {value.normalize()}% used",
+                            f"{connection.label}: {item.label} — {percentage(value)}% used",
                         )
                     )
                 if (

@@ -19,6 +19,7 @@ from credusage.domain.models import (
     QuotaObservation,
     Unit,
 )
+from credusage.formatting import percentage
 
 HEALTH_LABELS = {
     ConnectionHealth.DISCONNECTED: "Not connected",
@@ -58,7 +59,7 @@ def countdown(target: datetime | None, now: datetime) -> str:
 
 def quantity(value: Decimal, observation: QuotaObservation) -> str:
     if observation.unit == Unit.PERCENT:
-        return f"{number(value)}%"
+        return f"{percentage(value)}%"
     if observation.unit == Unit.CURRENCY:
         return f"{observation.currency or 'Unknown currency'} {number(value)}"
     if observation.unit == Unit.CREDITS:
@@ -74,7 +75,7 @@ def usage_label(observation: QuotaObservation) -> str:
     if observation.availability == Availability.NOT_APPLICABLE:
         return "Not applicable"
     if observation.used_percent is not None:
-        return f"{number(observation.used_percent)}% used"
+        return f"{percentage(observation.used_percent)}% used"
     if observation.used is not None and observation.limit is not None:
         return f"{quantity(observation.used, observation)} used of {quantity(observation.limit, observation)}"
     if observation.remaining is not None:

@@ -8,9 +8,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from credusage.domain.models import Connection
+from credusage.formatting import percentage
 
 _native = None
 _instance = None
+WINDOW_WIDTH_SCALE = 0.8
 
 
 def _load_native():
@@ -56,7 +58,7 @@ class SettingsWindow:
         self._build()
 
     def _rect(self, x, y, width, height):
-        return self.A.NSMakeRect(x, y, width, height)
+        return self.A.NSMakeRect(x * WINDOW_WIDTH_SCALE, y, width * WINDOW_WIDTH_SCALE, height)
 
     def label(self, parent, text, y, *, x=24, width=674, height=20, bold=False):
         A = self.A
@@ -90,6 +92,8 @@ class SettingsWindow:
         button = self.A.NSButton.alloc().initWithFrame_(self._rect(x, y, width, 30))
         button.setTitle_(text)
         button.setBezelStyle_(1)
+        button.setControlSize_(self.A.NSControlSizeSmall)
+        button.setFont_(self.A.NSFont.systemFontOfSize_(12))
         tag = len(self._callbacks) + 1
         self._callbacks[tag] = callback
         button.setTag_(tag)
@@ -116,7 +120,7 @@ class SettingsWindow:
             self._rect(0, 0, 746, 690), style, A.NSBackingStoreBuffered, False
         )
         self.window.setTitle_("CredUsage Settings" + (" · Demo" if config.demo else ""))
-        self.window.setMinSize_((746, 500))
+        self.window.setMinSize_((746 * WINDOW_WIDTH_SCALE, 500))
         self.window.setReleasedWhenClosed_(False)
         self.window.setDelegate_(self.delegate)
         content = self.window.contentView()
@@ -174,13 +178,15 @@ class SettingsWindow:
             y -= 34
             for key, label, value in (
                 ("label", "Display label", connection.label),
-                ("refresh", "Refresh seconds (min 300)", connection.preferences.refresh_seconds),
+                ("refresh", "Refresh seconds", connection.preferences.refresh_seconds),
                 ("order", "Display order", connection.preferences.order),
                 ("executable", "CLI executable path", connection.preferences.executable),
                 ("source_path", "Telemetry source path", connection.preferences.source_path),
             ):
                 self.label(document, label, y + 2, width=174)
                 controls[key] = self.field(document, value, y)
+                if key == "refresh":
+                    controls[key].setToolTip_("Refresh interval in seconds (minimum 300).")
                 y -= 31
             controls["notifications"] = self.check(
                 document,
@@ -229,7 +235,7 @@ class SettingsWindow:
         self.button(document, "Refresh all", self._refresh, 24, y - 3, 130)
         self.button(document, "About CredUsage", self._about, 178, y - 3, 160)
         y -= 36
-        self.label(document, "Preferred usage context", y + 3, width=174)
+        self.label(document, "Preferred context", y + 3, width=174)
         self.pin_picker = A.NSPopUpButton.alloc().initWithFrame_pullsDown_(
             self._rect(202, y - 3, 490, 28), False
         )
@@ -260,9 +266,9 @@ class SettingsWindow:
         )
         y -= 32
         self.label(document, "Thresholds (% used)", y + 3, width=174)
-        self.thresholds = self.field(
-            document, ", ".join(str(value) for value in config.thresholds), y
-        )
+        self._threshold_values = config.thresholds
+        self._threshold_display = ", ".join(percentage(value) for value in config.thresholds)
+        self.thresholds = self.field(document, self._threshold_display, y)
         y -= 35
         self.login = self.check(
             document,
@@ -304,6 +310,8 @@ class SettingsWindow:
                     }
                 )
             )
+            if self.thresholds.stringValue() == self._threshold_display:
+                thresholds = self._threshold_values
             if not thresholds or any(
                 not value.is_finite() or value <= 0 or value > 100 for value in thresholds
             ):

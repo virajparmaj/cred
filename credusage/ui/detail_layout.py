@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from urllib.parse import unquote
 
 from credusage.domain.models import Freshness, QuotaKind
 from credusage.ui.dashboard import ContextView, LimitView
 
-CANVAS_WIDTH = 200
-CANVAS_HEIGHT = 260
-CONTENT_SCALE = 1.25
-WINDOW_WIDTH = CANVAS_WIDTH * CONTENT_SCALE
-WINDOW_HEIGHT = CANVAS_HEIGHT * CONTENT_SCALE
-FOOTER_Y = 236
+WINDOW_WIDTH = 256
+OVERVIEW_HEIGHT = 320
+DETAIL_HEIGHT = 392
+HEADER_HEIGHT = 40
+FOOTER_HEIGHT = 40
+SELECTOR_HEIGHT = 32
+FEEDBACK_HEIGHT = 32
 
 
 @dataclass(frozen=True)
@@ -33,17 +35,28 @@ class QuotaGroup:
 class DetailGeometry:
     width: float
     height: float
-    compact: bool
     cards_y: float
     stats_y: float
     source_y: float
     actions_y: float
     footer_y: float
+    feedback_y: float
 
 
-def detail_geometry(available_width: float, available_height: float) -> DetailGeometry:
-    # AppKit positions the popover against its screen. Navigation never changes its canvas.
-    return DetailGeometry(CANVAS_WIDTH, CANVAS_HEIGHT, True, 72, 168, 200, 214, FOOTER_Y)
+def detail_geometry(*, selector_rows: int = 0, feedback: bool = False) -> DetailGeometry:
+    """Allocate real point sizes; optional controls never squeeze the quota columns."""
+    offset = selector_rows * SELECTOR_HEIGHT
+    extra = FEEDBACK_HEIGHT if feedback else 0
+    return DetailGeometry(
+        WINDOW_WIDTH,
+        DETAIL_HEIGHT + offset + extra,
+        128 + offset,
+        240 + offset,
+        284 + offset,
+        324 + offset,
+        352 + offset + extra,
+        352 + offset,
+    )
 
 
 def _generic_groups(limits: tuple[LimitView, ...]) -> tuple[QuotaGroup, ...]:
@@ -84,6 +97,26 @@ def _generic_groups(limits: tuple[LimitView, ...]) -> tuple[QuotaGroup, ...]:
 def quota_groups(integration: str, context: ContextView | None) -> tuple[QuotaGroup, ...]:
     if context is None:
         return ()
+    if integration == "google.antigravity":
+        pools, unmatched = {}, []
+        for limit in context.limits:
+            prefix, _, _ = limit.key.rpartition(":")
+            if prefix.startswith("antigravity:"):
+                pools.setdefault(prefix, []).append(limit)
+            else:
+                unmatched.append(limit)
+        groups = []
+        for key, limits in pools.items():
+            short = next((item for item in limits if item.duration_seconds == 18000), None)
+            long = next((item for item in limits if item.duration_seconds == 604800), None)
+            label = unquote(key.removeprefix("antigravity:"))
+            if short or long:
+                groups.append(QuotaGroup(key, label, short, long))
+            # Preserve future/extra windows without pairing them with a different model group.
+            groups.extend(
+                _generic_groups(tuple(item for item in limits if item not in (short, long)))
+            )
+        return tuple(groups) + _generic_groups(tuple(unmatched))
     if integration != "openai.codex":
         return _generic_groups(context.limits)
     pools, unmatched = {}, []
@@ -141,6 +174,6 @@ SOURCE_LABELS = {
     "openai.codex": "Codex CLI",
     "anthropic.claude": "Claude status-line",
     "cursor.editor": "Dashboard only",
-    "google.antigravity": "CLI discovery",
+    "google.antigravity": "Antigravity CLI",
     "example.demo": "Demo fixtures",
 }

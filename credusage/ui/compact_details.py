@@ -1,10 +1,10 @@
-"""Fixed-height native provider pages, rendered through the popover's controls."""
+"""Native provider details using direct point sizes and unboxed usage columns."""
 
 from decimal import Decimal
 
 from credusage.domain.models import ActionKind, Freshness
-from credusage.ui.detail_layout import SOURCE_LABELS, group_freshness, remaining_percent
-from credusage.ui.presentation import number, timestamp
+from credusage.ui.detail_layout import SOURCE_LABELS, WINDOW_WIDTH, group_freshness
+from credusage.ui.presentation import number, percentage, timestamp
 
 
 def duration_name(limit):
@@ -16,6 +16,16 @@ def duration_name(limit):
     if seconds % 3600 == 0:
         return f"{seconds // 3600}h"
     return f"{number(Decimal(seconds) / 60)}m"
+
+
+def window_title(limit, fallback):
+    if limit is None:
+        return fallback
+    if limit.duration_seconds == 18000:
+        return "5-hour"
+    if limit.duration_seconds == 604800:
+        return "Weekly"
+    return duration_name(limit)
 
 
 def dashboard_action(controller, context):
@@ -32,7 +42,7 @@ def dashboard_action(controller, context):
 
 
 def credit_label(value):
-    """Round the compact display only; exact credit quantities remain in accessibility text."""
+    """Round display only; preserve exact quantities in accessibility text."""
     if value is not None and 0 < abs(value) < Decimal("0.01"):
         return "<0.01" if value > 0 else "−<0.01"
     return f"{value:,.2f}".rstrip("0").rstrip(".") if value is not None else "Not reported"
@@ -58,30 +68,67 @@ class CompactDetails:
             self.cards(root)
         else:
             self.unavailable(root)
+        self.ui.separator(root, self.g.stats_y - 8)
         self.status_strip(root)
         self.actions(root)
+        if self.ui.action_message:
+            self.ui.text(
+                root,
+                self.ui.action_message,
+                16,
+                self.g.feedback_y,
+                WINDOW_WIDTH - 32,
+                size=11,
+                height=30,
+                secondary=True,
+                wrap=True,
+            )
         return self.g.footer_y
+
+    def checked_at(self):
+        if self.context is None:
+            return None
+        if self.provider.integration_id == "cursor.editor":
+            return self.context.last_checked_at or self.context.last_success_at
+        return self.context.last_success_at or self.context.last_checked_at
 
     def header(self, root):
         ui = self.ui
-        back = ui.button(root, "", ui.overview, 6, 7, 22, 22, symbol="chevron.left")
-        back.setAccessibilityLabel_("Back to overview")
-        back.setToolTip_("Back to overview")
-        ui.logo(root, self.provider, 34, 8, 22)
-        ui.text(root, self.provider.name, 60, 7, 132, size=12, bold=True, height=17)
+        back = ui.button(root, "All Providers", ui.overview, 16, 8, 108, symbol="chevron.left")
+        back.setAccessibilityLabel_("Back to all providers")
+        ui.updated_label(root, self.context.last_success_at if self.context else None)
+        ui.separator(root, 40, x=0, width=WINDOW_WIDTH)
+        ui.logo(root, self.provider, 16, 52, 56)
+        ui.text(root, self.provider.name, 80, 52, 160, size=15, bold=True, height=22)
         status = self.context.status if self.context else "Not configured"
         if self.context and self.context.loading:
             status += " · Refreshing…"
         if self.context and self.context.plan:
             status += f" · {self.context.plan.capitalize()}"
-        ui.text(root, status, 60, 24, 132, size=8, height=12, secondary=True)
+        ui.text(root, status, 80, 78, 160, size=11, height=16, secondary=True)
+        if len(self.provider.contexts) <= 1:
+            label = self.context.label if self.context else "Not configured"
+            ui.text(
+                root,
+                label,
+                80,
+                98,
+                160,
+                size=11,
+                height=17,
+                secondary=True,
+                alignment=ui.A.NSTextAlignmentLeft,
+            )
+        ui.separator(root, 120)
 
-    def picker(self, root, labels, identities, selected, x, width, action, accessibility):
+    def picker(self, root, labels, identities, selected, y, action, accessibility):
         ui = self.ui
-        picker = ui.Picker.alloc().initWithFrame_pullsDown_(ui.rect(x, 43, width, 20), False)
+        picker = ui.Picker.alloc().initWithFrame_pullsDown_(
+            ui.rect(16, y, WINDOW_WIDTH - 32, 24), False
+        )
         picker.setControlSize_(ui.A.NSControlSizeSmall)
-        picker.setFont_(ui.A.NSFont.systemFontOfSize_(9))
-        picker.setFocusRingType_(ui.A.NSFocusRingTypeNone)
+        picker.setFont_(ui.A.NSFont.systemFontOfSize_(12))
+        picker.setFocusRingType_(ui.A.NSFocusRingTypeExterior)
         picker.addItemsWithTitles_(labels)
         for index, identity in enumerate(identities):
             picker.itemAtIndex_(index).setRepresentedObject_(identity)
@@ -95,93 +142,96 @@ class CompactDetails:
         ui.focusables.append(picker)
 
     def selectors(self, root):
-        context_picker = len(self.provider.contexts) > 1
-        pool_picker = len(self.groups) > 1
-        width = 86 if context_picker and pool_picker else 180
-        if context_picker:
-            labels = [
-                c.label + (" · disabled" if not c.enabled else "") for c in self.provider.contexts
-            ]
+        y = 124
+        if len(self.provider.contexts) > 1:
             self.picker(
                 root,
-                labels,
+                [
+                    c.label + (" · disabled" if not c.enabled else "")
+                    for c in self.provider.contexts
+                ],
                 [c.connection_id for c in self.provider.contexts],
                 self.provider.contexts.index(self.context),
-                10,
-                width,
+                y,
                 "contextChanged:",
                 "Provider context",
             )
-        if pool_picker:
+            y += 32
+        if len(self.groups) > 1:
             self.picker(
                 root,
                 [g.label for g in self.groups],
                 [g.key for g in self.groups],
                 self.groups.index(self.group),
-                104 if context_picker else 10,
-                width,
+                y,
                 "poolChanged:",
                 "Quota pool",
             )
-        if not context_picker and not pool_picker:
-            label = self.context.label if self.context else "Configure in Settings"
-            self.ui.text(root, label, 10, 46, 180, size=9, height=13, secondary=True)
 
     def cards(self, root):
-        self.ui.tile(root, 6, 68, 92, 96)
-        self.ui.tile(root, 102, 68, 92, 96)
-        self.card(root, self.group.short, "Short term", 10)
-        self.card(root, self.group.long, "Long term", 106)
+        self.card(root, self.group.short, "Short term", 16)
+        self.card(root, self.group.long, "Long term", 140)
 
     def metric(self, root, value, x, y, percent):
         ui = self.ui
-        field = ui.text(root, value, x, y, 84, size=20 if percent else 10, height=27, bold=True)
+        field = ui.text(
+            root,
+            value,
+            x,
+            y,
+            100,
+            size=26 if percent else 12,
+            height=36,
+            monospaced=percent,
+        )
         if percent:
             styled = ui.A.NSMutableAttributedString.alloc().initWithAttributedString_(
                 field.attributedStringValue()
             )
             styled.addAttribute_value_range_(
-                ui.A.NSFontAttributeName, ui.A.NSFont.systemFontOfSize_(8), (len(value) - 4, 4)
+                ui.A.NSFontAttributeName, ui.A.NSFont.systemFontOfSize_(11), (len(value) - 4, 4)
             )
-            for size in range(20, 11, -1):
+            for size in range(26, 17, -1):
                 styled.addAttribute_value_range_(
                     ui.A.NSFontAttributeName,
-                    ui.A.NSFont.boldSystemFontOfSize_(size),
+                    ui.A.NSFont.monospacedDigitSystemFontOfSize_weight_(
+                        size, ui.A.NSFontWeightMedium
+                    ),
                     (0, len(value) - 5),
                 )
-                if styled.size().width <= 80:
+                if styled.size().width <= 96:
                     break
             field.setAttributedStringValue_(styled)
         field.setAccessibilityLabel_(value)
 
-    def card(self, root, limit, title, x):
+    def card(self, root, limit, fallback, x):
         ui, y = self.ui, self.g.cards_y
-        label = f"{duration_name(limit)} · {title}" if limit else title
-        ui.text(root, label.upper(), x, y, 84, size=8, height=13, bold=True, secondary=True)
+        ui.text(root, window_title(limit, fallback), x, y, 100, size=11, height=16, secondary=True)
         percent = bool(limit and limit.percent_used is not None)
         value = (
-            f"{number(limit.percent_used)}% used"
+            f"{percentage(limit.percent_used)}% used"
             if percent
-            else (limit.usage if limit else "Not reported")
+            else limit.usage if limit else "Not reported"
         )
-        self.metric(root, value, x, y + 17, percent)
-        ui.progress(
-            root,
-            limit.percent_used if limit else None,
-            self.provider.integration_id,
-            x,
-            y + 45,
-            84,
-            bool(limit and limit.freshness != Freshness.FRESH),
-        )
+        self.metric(root, value, x, y + 18, percent)
+        if percent:
+            ui.progress(
+                root,
+                limit.percent_used,
+                self.provider.integration_id,
+                x,
+                y + 60,
+                100,
+                limit.freshness != Freshness.FRESH,
+            )
         reset = ui.text(
             root,
             limit.reset_label if limit else "Reset not reported",
             x,
-            y + 54,
-            84,
-            size=8,
-            height=12,
+            y + 70,
+            100,
+            size=11,
+            height=16,
             secondary=True,
         )
         if limit:
@@ -189,12 +239,17 @@ class CompactDetails:
             reset.setAccessibilityLabel_(
                 f"{limit.reset_label}; reported reset {timestamp(limit.resets_at)}"
             )
-        left = remaining_percent(limit)
-        remaining = f"{number(left)}% left" if left is not None else "Remaining unknown"
-        ui.text(root, remaining, x, y + 67, 84, size=9, height=13, secondary=True)
         if not limit or limit.freshness != Freshness.FRESH:
-            freshness = limit.freshness.value.capitalize() if limit else "Unavailable"
-            field = ui.text(root, freshness, x, y + 80, 84, size=8, height=12, secondary=True)
+            field = ui.text(
+                root,
+                limit.freshness.value.capitalize() if limit else "Unavailable",
+                x,
+                y + 88,
+                100,
+                size=11,
+                height=16,
+                secondary=True,
+            )
             if limit:
                 field.setToolTip_("\n".join(limit.facts))
 
@@ -211,73 +266,81 @@ class CompactDetails:
                 title = "Dashboard only"
             elif self.provider.integration_id == "google.antigravity":
                 title = "Source readiness"
-        ui.tile(root, 6, 68, 188, 96)
-        ui.text(root, title, 12, 76, 176, size=12, height=18, bold=True)
-        field = ui.text(root, message, 12, 101, 176, size=9, height=57, secondary=True, wrap=True)
-        field.setAccessibilityLabel_(message)
+        ui.text(
+            root, title, 16, self.g.cards_y + 8, WINDOW_WIDTH - 32, size=15, height=22, bold=True
+        )
+        ui.text(
+            root,
+            message,
+            16,
+            self.g.cards_y + 38,
+            WINDOW_WIDTH - 32,
+            size=12,
+            height=60,
+            secondary=True,
+            wrap=True,
+        )
 
     def stat(self, root, title, value, x, tooltip=None):
         ui, y = self.ui, self.g.stats_y
-        ui.text(root, title, x, y + 6, 56, size=7.5, height=11, secondary=True)
-        field = ui.text(root, value, x, y + 17, 56, size=9, height=13, bold=True)
-        if field.attributedStringValue().size().width > 52:
-            field.setFont_(ui.A.NSFont.boldSystemFontOfSize_(8))
+        ui.text(root, title, x, y, 72, size=11, height=16, secondary=True)
+        field = ui.text(
+            root, value, x, y + 18, 72, size=12, height=18, monospaced=title != "Freshness"
+        )
         field.setToolTip_(tooltip or value)
         field.setAccessibilityLabel_(f"{title}: {tooltip or value}")
 
     def status_strip(self, root):
         ui, context = self.ui, self.context
-        ui.tile(root, 6, self.g.stats_y, 188, 31)
-        discovery_only = self.provider.integration_id in ("cursor.editor", "google.antigravity")
-        checked = (
-            (
-                (context.last_checked_at or context.last_success_at)
-                if discovery_only
-                else (context.last_success_at or context.last_checked_at)
-            )
-            if context
-            else None
-        )
+        checked = self.checked_at()
         title = (
-            "Updated" if context and context.last_success_at and not discovery_only else "Checked"
+            "Updated"
+            if context
+            and context.last_success_at
+            and self.provider.integration_id != "cursor.editor"
+            else "Checked"
         )
         self.stat(
             root,
             title,
             checked.astimezone().strftime("%H:%M") if checked else "Unknown",
-            10,
+            16,
             timestamp(checked),
         )
-        self.stat(root, "Freshness", group_freshness(self.group), 72)
-        credit = self.group.credits if self.group else None
+        self.stat(root, "Freshness", group_freshness(self.group), 92)
+        credit = self.group.credits if self.group and context and context.enabled else None
         if credit:
-            self.stat(root, "Credits", credit_label(credit.remaining), 134, credit.usage)
+            self.stat(root, "Credits", credit_label(credit.remaining), 168, credit.usage)
         else:
             value = (
                 "Verified"
                 if context and context.verified
-                else ("Unverified" if context else "Not set")
+                else "Unverified" if context else "Not set"
             )
-            self.stat(root, "Account", value, 134, "Not configured" if context is None else None)
+            self.stat(root, "Account", value, 168)
         source = (
             "Demo fixtures"
             if ui.dashboard.demo
             else SOURCE_LABELS.get(self.provider.integration_id, "Provider source")
         )
-        if credit and context and not context.verified:
-            source += " · Unverified"
+        source = "Source: " + source
+        if context and not context.verified:
+            source += " · Unverified reading"
+        elif context and context.verified:
+            source += " · Verified"
         field = ui.text(
             root,
-            ui.action_message or source,
-            10,
+            source,
+            16,
             self.g.source_y,
-            180,
-            size=8,
-            height=11,
+            WINDOW_WIDTH - 32,
+            size=11,
+            height=30,
             secondary=True,
+            wrap=True,
         )
-        field.setToolTip_("\n".join(context.facts) if context else source)
-        field.setAccessibilityLabel_(ui.action_message or source)
+        field.setToolTip_(source + ("\n" + "\n".join(context.facts) if context else ""))
+        field.setAccessibilityLabel_(source)
 
     def actions(self, root):
         ui, context = self.ui, self.context
@@ -285,26 +348,25 @@ class CompactDetails:
             root,
             "Refreshing…" if context and context.loading else "Refresh",
             ui.refresh_detail,
-            10,
+            16,
             self.g.actions_y,
-            58,
-            symbol="arrow.clockwise",
+            108,
+            filled=True,
         )
         refresh.setEnabled_(bool(context and context.enabled and not context.loading))
         action = dashboard_action(ui.shell.controller, context)
         label = (
-            "Open Antigravity"
-            if self.provider.integration_id == "google.antigravity"
-            else "Dashboard"
+            "Antigravity" if self.provider.integration_id == "google.antigravity" else "Dashboard"
         )
         button = ui.button(
             root,
             label,
             ui.open_dashboard,
-            82,
+            132,
             self.g.actions_y,
             108,
-            symbol="arrow.up.right.square",
+            symbol="arrow.up.right",
+            filled=True,
         )
         button.setEnabled_(bool(action and not ui.shell.controller.config.demo))
         if action:
